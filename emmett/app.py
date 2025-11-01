@@ -16,9 +16,15 @@ from typing import Any, Dict, List, Optional, Type, Union
 
 import click
 from emmett_core._internal import create_missing_app_folders, get_root_path
-from emmett_core.app import App as _App, AppModule as _AppModule, AppModuleGroup as _AppModuleGroup, Config as _Config
+from emmett_core.app import (
+    App as _App,
+    AppModule as _AppModule,
+    AppModuleGroup as _AppModuleGroup,
+    Config as _Config,
+)
 from emmett_core.routing.cache import RouteCacheRule
 from yaml import SafeLoader as ymlLoader, load as ymlload
+from tomllib import loads as tomload
 
 from .asgi.handlers import HTTPHandler as ASGIHTTPHandler, WSHandler as ASGIWSHandler
 from .ctx import current
@@ -140,7 +146,11 @@ class AppModule(_AppModule):
         name = appmod.name + "." + name
         if url_prefix and not url_prefix.startswith("/"):
             url_prefix = "/" + url_prefix
-        module_url_prefix = (appmod.url_prefix + (url_prefix or "")) if appmod.url_prefix else url_prefix
+        module_url_prefix = (
+            (appmod.url_prefix + (url_prefix or ""))
+            if appmod.url_prefix
+            else url_prefix
+        )
         hostname = hostname or appmod.hostname
         cache = cache or appmod.cache
         return cls(
@@ -305,7 +315,13 @@ class AppModule(_AppModule):
 
 
 class App(_App):
-    __slots__ = ["cli", "template_default_extension", "template_path", "templater", "translator"]
+    __slots__ = [
+        "cli",
+        "template_default_extension",
+        "template_path",
+        "templater",
+        "translator",
+    ]
 
     config_class = Config
     modules_class = AppModule
@@ -429,13 +445,26 @@ class App(_App):
         return context
 
     def render_template(self, filename: str) -> str:
-        ctx = {"current": current, "url": url, "asis": asis, "load_component": load_component}
+        ctx = {
+            "current": current,
+            "url": url,
+            "asis": asis,
+            "load_component": load_component,
+        }
         return self.templater.render(filename, ctx)
 
     def config_from_yaml(self, filename: str, namespace: Optional[str] = None):
         #: import configuration from yaml files
         rc = read_file(os.path.join(self.config_path, filename))
         rc = ymlload(rc, Loader=ymlLoader)
+        c = self.config if namespace is None else self.config[namespace]
+        for key, val in rc.items():
+            c[key] = dict_to_sdict(val)
+
+    def config_from_toml(self, filename: str, namespace: Optional[str] = None):
+        #: import configuration from toml files
+        rc = read_file(os.path.join(self.config_path, filename))
+        rc = tomload(rc)
         c = self.config if namespace is None else self.config[namespace]
         for key, val in rc.items():
             c[key] = dict_to_sdict(val)
@@ -522,7 +551,12 @@ class AppModuleGroup(_AppModuleGroup):
         template: Optional[str] = None,
         **kwargs,
     ) -> RoutingCtxGroup:
-        return RoutingCtxGroup([mod.route(paths=paths, name=name, template=template, **kwargs) for mod in self.modules])
+        return RoutingCtxGroup(
+            [
+                mod.route(paths=paths, name=name, template=template, **kwargs)
+                for mod in self.modules
+            ]
+        )
 
 
 class AppModulesGrouped(AppModuleGroup):
